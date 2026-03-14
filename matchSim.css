@@ -162,6 +162,28 @@
     background: #f77f00;
 }
 
+.sim-manager-label {
+    color: #8fb3da;
+    font-size: 0.72rem;
+    margin-left: 4px;
+}
+
+.sim-manager-select {
+    background: #0f2f52;
+    color: #d7e9ff;
+    border: 1px solid #4a678f;
+    border-radius: 8px;
+    padding: 5px 8px;
+    font-size: 0.76rem;
+    max-width: 170px;
+}
+
+.sim-manager-btn {
+    background: linear-gradient(135deg, #2837a2, #1a4371) !important;
+    color: #d9e9ff !important;
+    border: 1px solid #4a678f !important;
+}
+
 /* --- PITCH CANVAS --- */
 .sim-pitch-wrapper {
     display: flex;

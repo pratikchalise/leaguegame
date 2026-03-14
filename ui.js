@@ -2,6 +2,8 @@ const app = document.getElementById("app");
 
 // --- SETUP UI ---
 function renderSetup() {
+  if (typeof ensureManagerState === "function") ensureManagerState();
+
   app.innerHTML = `
     <div class="setup-card">
       <h2>🏆 Create Your League</h2>
@@ -9,6 +11,7 @@ function renderSetup() {
       <label>Number of Teams (max ${maxTeams})</label>
       <input type="number" id="teamCount" min="2" max="${maxTeams}" value="8" oninput="renderTeamNameInputs()">
       <div id="teamNamesContainer"></div>
+      <div id="homeManagerSelectWrap" class="home-manager-select-wrap"></div>
       <button onclick="startLeague()">🚀 Generate Teams & Start</button>
       <div style="display:flex; gap:12px; margin-top:16px; justify-content:center; flex-wrap:wrap;">
         <button class="btn-secondary" onclick="importRosterData()" style="flex:1; min-width:140px;">📥 Import Roster</button>
@@ -38,6 +41,8 @@ function renderTeamNameInputs() {
   }
   html += `</div>`;
   container.innerHTML = html;
+
+  if (typeof renderHomeManagerSelect === "function") renderHomeManagerSelect();
 }
 
 function startLeague() {
@@ -55,6 +60,9 @@ function startLeague() {
   }
 
   generateTeams(count, customNames);
+  if (typeof applyManagerSetupSelectionAfterTeamCreation === "function") {
+    applyManagerSetupSelectionAfterTeamCreation();
+  }
   generateFixtures();
   renderLeagueUI();
 }
@@ -66,6 +74,8 @@ function renderLeagueUI() {
       <h2>⚽ League Dashboard</h2>
       <div class="match-counter">Match ${fixtures.filter(f => f.played).length} / ${fixtures.length}</div>
     </div>
+
+    ${typeof renderManagerQuickBadge === 'function' ? renderManagerQuickBadge() : ''}
 
     <div class="action-grid">
       <div class="action-card" onclick="simulateNextMatch()">
@@ -87,6 +97,14 @@ function renderLeagueUI() {
       <div class="action-card" onclick="showLeagueStats()">
         <div class="action-icon">📊</div>
         <div class="action-label">Stats</div>
+      </div>
+      <div class="action-card" onclick="openManagerHub()">
+        <div class="action-icon">🧠</div>
+        <div class="action-label">Manager Hub</div>
+      </div>
+      <div class="action-card" onclick="openGlobalTransferMarket()">
+        <div class="action-icon">💱</div>
+        <div class="action-label">Transfer Market</div>
       </div>
       <div class="action-card" onclick="renderPlayerListUI()">
         <div class="action-icon">👥</div>
@@ -248,6 +266,10 @@ function simulateNextMatch() {
   renderCurrentMatch();
   renderLeagueTable();
   updateMatchCounter();
+  if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate(match);
+  if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
+  if (typeof managerWeeklyTick === "function") managerWeeklyTick();
+  if (typeof evaluateBoardObjectives === "function") evaluateBoardObjectives();
   checkSeasonEnd();
 }
 
@@ -285,6 +307,10 @@ function saveMatchResult() {
   renderCurrentMatch();
   renderLeagueTable();
   updateMatchCounter();
+  if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate(m);
+  if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
+  if (typeof managerWeeklyTick === "function") managerWeeklyTick();
+  if (typeof evaluateBoardObjectives === "function") evaluateBoardObjectives();
   checkSeasonEnd();
 }
 
@@ -298,6 +324,7 @@ function regenerateAllPlayers() {
 function restartLeague() {
   if (confirm("Are you sure you want to restart the tournament? All data will be lost!")) {
     teams = [];
+    freeAgents = [];
     fixtures = [];
     currentMatchIndex = 0;
     knockoutMatches = [];
@@ -305,6 +332,7 @@ function restartLeague() {
     knockoutHistory = [];
     knockoutStage = 0;
     seasonEnded = false;
+    currentSeason = 1;
     renderSetup();
   }
 }
@@ -617,6 +645,8 @@ function renderNextKnockoutMatch() {
         <h2>🥊 ${m.name}</h2>
       </div>
 
+      ${typeof renderManagerQuickBadge === 'function' ? renderManagerQuickBadge() : ''}
+
       <div class="action-grid">
         <div class="action-card" onclick="playKnockoutMatch()">
           <div class="action-icon">💾</div>
@@ -641,6 +671,14 @@ function renderNextKnockoutMatch() {
         <div class="action-card" onclick="showLeagueStats()">
           <div class="action-icon">📊</div>
           <div class="action-label">Stats</div>
+        </div>
+        <div class="action-card" onclick="openManagerHub()">
+          <div class="action-icon">🧠</div>
+          <div class="action-label">Manager Hub</div>
+        </div>
+        <div class="action-card" onclick="openGlobalTransferMarket()">
+          <div class="action-icon">💱</div>
+          <div class="action-label">Transfer Market</div>
         </div>
         <div class="action-card" onclick="viewAwards()">
           <div class="action-icon">📋</div>
@@ -690,6 +728,7 @@ function renderNextKnockoutMatch() {
           <h2>🏆 Champion: ${champion}!</h2>
           <p>Congratulations to ${champion} for winning the tournament!</p>
           <div class="champion-actions">
+            <button onclick="startNextSeason()">➡️ Next Season</button>
             <button onclick="restartLeague()">🔄 Restart</button>
             <button class="btn-secondary" onclick="renderPlayerListUI()">👥 Players</button>
             <button class="btn-secondary" onclick="showLeagueStats()">📊 Stats</button>
@@ -737,10 +776,14 @@ function playKnockoutMatch() {
     // Draw — launch penalty shootout
     openPenaltyShootout(m.home, m.away, homeScore, awayScore, (penResult) => {
       saveKnockoutResult(m, homeScore, awayScore, penResult);
+      if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore, awayScore });
+      if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
       renderNextKnockoutMatch();
     });
   } else {
     saveKnockoutResult(m, homeScore, awayScore, null);
+    if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore, awayScore });
+    if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
     renderNextKnockoutMatch();
   }
 }
@@ -753,10 +796,14 @@ function simulateCurrentKnockoutMatch() {
     // Draw — launch penalty shootout
     openPenaltyShootout(m.home, m.away, result.homeScore, result.awayScore, (penResult) => {
       saveKnockoutResult(m, result.homeScore, result.awayScore, penResult);
+      if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore: result.homeScore, awayScore: result.awayScore });
+      if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
       renderNextKnockoutMatch();
     });
   } else {
     saveKnockoutResult(m, result.homeScore, result.awayScore, null);
+    if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore: result.homeScore, awayScore: result.awayScore });
+    if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
     renderNextKnockoutMatch();
   }
 }
@@ -771,6 +818,8 @@ function simulateAllKnockoutMatches() {
         penResult = autoResolvePenaltyShootout(m.home, m.away);
       }
       saveKnockoutResult(m, result.homeScore, result.awayScore, penResult);
+      if (typeof onManagerPostMatchUpdate === "function") onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore: result.homeScore, awayScore: result.awayScore });
+      if (typeof processTransferMarketAfterMatch === "function") processTransferMarketAfterMatch();
     } else if (knockoutResults.length > 1) {
       // Advance round logic inside loop
       const nextRoundTeams = knockoutResults.map((r) => r.winner);
@@ -1141,6 +1190,46 @@ function checkSeasonEnd() {
     }
 }
 
+function startNextSeason() {
+  if (!teams || teams.length < 2) return alert('Need at least 2 teams to continue.');
+
+  teams.forEach(team => {
+    // Preserve squad, manager, finances. Reset only season stats.
+    team.stats = { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 };
+    if (typeof team.morale !== 'number') team.morale = 58;
+    if (typeof ensureTeamFinanceProfile === 'function') ensureTeamFinanceProfile(team);
+
+    team.players.forEach(p => {
+      p.goals = 0;
+      p.assists = 0;
+      p.yellowCards = 0;
+      p.redCards = 0;
+      p.penalties = 0;
+      p.freekicks = 0;
+      p.passesAttempted = 0;
+      p.passesCompleted = 0;
+      p.contractYears = Math.max(1, (p.contractYears || 2) - 1);
+      p.form = typeof p.form === 'number' ? Math.max(35, p.form - randomInt(2, 8)) : randomInt(45, 58);
+      if (typeof ensurePlayerEconomicFields === 'function') ensurePlayerEconomicFields(p, team);
+    });
+  });
+
+  fixtures = [];
+  currentMatchIndex = 0;
+  knockoutMatches = [];
+  knockoutResults = [];
+  knockoutHistory = [];
+  knockoutStage = 0;
+  seasonEnded = false;
+  currentSeason = (typeof currentSeason === 'number' ? currentSeason : 1) + 1;
+
+  if (typeof rebuildFreeAgentPoolFromLeague === 'function') rebuildFreeAgentPoolFromLeague();
+  if (typeof ensureLeagueRosterViability === 'function') ensureLeagueRosterViability();
+  generateFixtures();
+  renderLeagueUI();
+  alert(`✅ Season ${currentSeason} started. Teams, budgets and players were carried over.`);
+}
+
 // ---- ADD TEAM MID-TOURNAMENT ----
 function openAddTeamPopup() {
     let html = `
@@ -1226,6 +1315,11 @@ function addTeamWithRandomPlayers() {
         stats: { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
     };
     teams.push(newTeam);
+
+    if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams([newTeam]);
+    if (typeof assignRandomManagersToTeams === 'function') assignRandomManagersToTeams(teams);
+    if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+    if (typeof refreshTransferMarketListings === 'function') refreshTransferMarketListings();
 
     // Generate random players
     const index = teams.findIndex(t => t.id === newId);
@@ -1433,6 +1527,11 @@ function confirmCustomTeam() {
         stats: { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
     };
     teams.push(newTeam);
+
+    if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams([newTeam]);
+    if (typeof assignRandomManagersToTeams === 'function') assignRandomManagersToTeams(teams);
+    if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+    if (typeof refreshTransferMarketListings === 'function') refreshTransferMarketListings();
 
     // Add fixtures for the new team
     const catchUp = addFixturesForNewTeam(newTeam);
@@ -1800,16 +1899,28 @@ function exportTournament() {
 
     const saveData = {
         _type: 'league-simulator-tournament',
-        _version: 2,
+      _version: 3,
         _exportDate: new Date().toISOString(),
+      currentSeason: typeof currentSeason === 'number' ? currentSeason : 1,
         teams: teams.map(t => ({
             id: t.id,
             name: t.name,
             color: t.color,
+        manager: t.manager || null,
+        morale: t.morale,
+        finance: t.finance || null,
+        form: t.form || null,
             players: t.players.map(p => ({
                 name: p.name,
                 rating: p.rating,
                 position: p.position,
+          age: p.age,
+          contractYears: p.contractYears,
+          form: p.form,
+          relationWithManager: p.relationWithManager,
+          transferDemand: p.transferDemand,
+          marketValue: p.marketValue,
+          wageDemand: p.wageDemand,
                 type: p.type || 'Normal',
                 freekickRating: p.freekickRating,
                 passingRating: p.passingRating,
@@ -1825,6 +1936,10 @@ function exportTournament() {
             })),
             stats: { ...t.stats }
         })),
+          freeAgents: (typeof freeAgents !== 'undefined' && Array.isArray(freeAgents))
+            ? freeAgents.map(p => ({ ...p }))
+            : [],
+          managerState: (typeof managerState !== 'undefined') ? JSON.parse(JSON.stringify(managerState)) : null,
         fixtures: fixtures.map(serializeFixture),
         matchHistory: matchHistory.slice(),
         knockoutMatches: knockoutMatches.map(serializeKnockoutMatch),
@@ -1856,11 +1971,22 @@ function importTournament() {
             id: t.id,
             name: t.name,
             color: t.color,
+          manager: t.manager || null,
+          morale: typeof t.morale === 'number' ? t.morale : 58,
+          finance: t.finance || null,
+          form: t.form || null,
             players: (t.players || []).map(p => ({
                 name: p.name,
                 rating: p.rating,
                 position: p.position,
                 type: p.type || 'Normal',
+            age: p.age || randomInt(18, 34),
+            contractYears: p.contractYears || randomInt(1, 5),
+            form: typeof p.form === 'number' ? p.form : randomInt(45, 60),
+            relationWithManager: typeof p.relationWithManager === 'number' ? p.relationWithManager : randomInt(45, 72),
+            transferDemand: typeof p.transferDemand === 'number' ? p.transferDemand : randomInt(20, 65),
+            marketValue: p.marketValue || 0,
+            wageDemand: p.wageDemand || 0,
                 freekickRating: p.freekickRating || p.rating,
                 passingRating: p.passingRating || p.rating,
                 playStyle: p.playStyle || 'balanced',
@@ -1875,6 +2001,23 @@ function importTournament() {
             })),
             stats: t.stats || { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
         }));
+
+            currentSeason = data.currentSeason || 1;
+            freeAgents = Array.isArray(data.freeAgents) ? data.freeAgents.map(p => ({ ...p })) : [];
+            if (data.managerState && typeof data.managerState === 'object' && typeof managerState !== 'undefined') {
+              managerState = {
+                ...managerState,
+                ...data.managerState,
+                profile: { ...managerState.profile, ...(data.managerState.profile || {}) },
+                board: { ...managerState.board, ...(data.managerState.board || {}) },
+                finance: { ...managerState.finance, ...(data.managerState.finance || {}) },
+                squad: { ...managerState.squad, ...(data.managerState.squad || {}) },
+                tactics: { ...managerState.tactics, ...(data.managerState.tactics || {}) },
+                facilities: { ...managerState.facilities, ...(data.managerState.facilities || {}) },
+                transfer: { ...managerState.transfer, ...(data.managerState.transfer || {}) },
+                history: { ...managerState.history, ...(data.managerState.history || {}) }
+              };
+            }
 
         // Build team lookup map by ID
         const teamMap = {};
@@ -1933,6 +2076,11 @@ function importTournament() {
         // Find where we are and render accordingly
         currentMatchIndex = fixtures.findIndex(f => !f.played);
         if (currentMatchIndex === -1) currentMatchIndex = fixtures.length;
+
+        if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams(teams);
+        if (typeof initializeTransferSystem === 'function') initializeTransferSystem(teams);
+        if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+        if (typeof rebuildFreeAgentPoolFromLeague === 'function' && (!Array.isArray(freeAgents) || freeAgents.length === 0)) rebuildFreeAgentPoolFromLeague();
 
         // Decide which screen to show
         if (knockoutMatches.length > 0) {
@@ -2001,11 +2149,22 @@ function importRosterData() {
             id: i,
             name: t.name,
             color: t.color || `hsl(${randomInt(0, 360)}, 60%, 45%)`,
+          manager: null,
+          morale: randomInt(50, 65),
+          finance: null,
+          form: null,
             players: (t.players || []).map(p => ({
                 name: p.name,
                 rating: p.rating,
                 position: p.position,
                 type: p.type || 'Normal',
+            age: p.age || randomInt(18, 34),
+            contractYears: p.contractYears || randomInt(1, 5),
+            form: typeof p.form === 'number' ? p.form : randomInt(45, 60),
+            relationWithManager: typeof p.relationWithManager === 'number' ? p.relationWithManager : randomInt(45, 72),
+            transferDemand: typeof p.transferDemand === 'number' ? p.transferDemand : randomInt(20, 65),
+            marketValue: p.marketValue || 0,
+            wageDemand: p.wageDemand || 0,
                 freekickRating: p.freekickRating || p.rating,
                 passingRating: p.passingRating || p.rating,
                 playStyle: p.playStyle || 'balanced',
@@ -2021,6 +2180,9 @@ function importRosterData() {
             stats: { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
         }));
 
+          currentSeason = 1;
+          freeAgents = [];
+
         // Reset all game state
         fixtures = [];
         currentMatchIndex = 0;
@@ -2033,6 +2195,10 @@ function importRosterData() {
 
         // Generate fresh fixtures
         generateFixtures();
+        if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams(teams);
+        if (typeof initializeTransferSystem === 'function') initializeTransferSystem(teams);
+        if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+        if (typeof rebuildFreeAgentPoolFromLeague === 'function') rebuildFreeAgentPoolFromLeague();
 
         renderLeagueUI();
         alert(`✅ Roster imported! ${teams.length} teams with ${teams.reduce((s, t) => s + t.players.length, 0)} total players loaded.\nFixtures have been generated — start playing!`);

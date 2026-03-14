@@ -121,7 +121,12 @@ function createSimState(homeTeam, awayTeam, mode, onFinish) {
 
     const homeRating = getTeamRating(homeStarting);
     const awayRating = getTeamRating(awayStarting);
-    const ratingDiff = homeRating - awayRating;
+    const managerInfluence = typeof getManagerMatchInfluence === 'function'
+        ? getManagerMatchInfluence(homeTeam, awayTeam)
+        : { home: 0, away: 0, notes: [] };
+    const adjustedHomeRating = homeRating + (managerInfluence.home || 0);
+    const adjustedAwayRating = awayRating + (managerInfluence.away || 0);
+    const ratingDiff = adjustedHomeRating - adjustedAwayRating;
 
     // Build player entities with positions
     const buildEntities = (players, side) => {
@@ -169,9 +174,10 @@ function createSimState(homeTeam, awayTeam, mode, onFinish) {
         awayStarting,
         homeEntities,
         awayEntities,
-        homeRating,
-        awayRating,
+        homeRating: adjustedHomeRating,
+        awayRating: adjustedAwayRating,
         ratingDiff,
+        managerInfluence,
         mode,
         modeConfig,
         ball: {
@@ -280,6 +286,12 @@ function openMatchSimulation(homeTeam, awayTeam, options = {}) {
     // Close any existing popup
     closeMatchSimulation();
 
+    if (typeof ensureLeagueRosterViability === 'function') ensureLeagueRosterViability();
+    if (typeof ensureTeamHasMinimumRoster === 'function') {
+        ensureTeamHasMinimumRoster(homeTeam);
+        ensureTeamHasMinimumRoster(awayTeam);
+    }
+
     const overlay = document.createElement('div');
     overlay.className = 'sim-overlay';
     overlay.id = 'simOverlay';
@@ -353,6 +365,9 @@ function openMatchSimulation(homeTeam, awayTeam, options = {}) {
     }
     if (simState.suspendedPlayers && simState.suspendedPlayers.away.length > 0) {
         addSimEvent('card', `🚫 SUSPENDED: ${simState.suspendedPlayers.away.join(', ')} (${awayTeam.name}) - Red card ban from previous match`, 'away');
+    }
+    if (simState.managerInfluence && Array.isArray(simState.managerInfluence.notes)) {
+        simState.managerInfluence.notes.forEach(note => addSimEvent('event', `🧠 ${note}`, 'neutral'));
     }
 
     // Start the simulation loop
@@ -1250,6 +1265,10 @@ function simulateNextMatchVisual() {
             renderCurrentMatch();
             renderLeagueTable();
             updateMatchCounter();
+            if (typeof onManagerPostMatchUpdate === 'function') onManagerPostMatchUpdate(match);
+            if (typeof processTransferMarketAfterMatch === 'function') processTransferMarketAfterMatch();
+            if (typeof managerWeeklyTick === 'function') managerWeeklyTick();
+            if (typeof evaluateBoardObjectives === 'function') evaluateBoardObjectives();
             checkSeasonEnd();
         }
     });
@@ -1268,10 +1287,14 @@ function simulateKnockoutMatchVisual() {
                 // Draw in knockout — launch penalty shootout popup
                 openPenaltyShootout(m.home, m.away, result.homeScore, result.awayScore, (penResult) => {
                     saveKnockoutResultVisual(m, result.homeScore, result.awayScore, penResult);
+                    if (typeof onManagerPostMatchUpdate === 'function') onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore: result.homeScore, awayScore: result.awayScore });
+                    if (typeof processTransferMarketAfterMatch === 'function') processTransferMarketAfterMatch();
                     renderNextKnockoutMatch();
                 });
             } else {
                 saveKnockoutResultVisual(m, result.homeScore, result.awayScore, null);
+                if (typeof onManagerPostMatchUpdate === 'function') onManagerPostMatchUpdate({ home: m.home, away: m.away, homeScore: result.homeScore, awayScore: result.awayScore });
+                if (typeof processTransferMarketAfterMatch === 'function') processTransferMarketAfterMatch();
                 renderNextKnockoutMatch();
             }
         }

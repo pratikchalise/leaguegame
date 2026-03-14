@@ -8,6 +8,8 @@ let knockoutResults = [];
 let knockoutHistory = [];
 let knockoutStage = 0;
 let seasonEnded = false;
+let currentSeason = 1;
+let freeAgents = [];
 let seasonHistory = [];
 let globalRecords = {
     topScorers: [], // { name, team, goals, season }
@@ -44,6 +46,7 @@ function shuffleArray(array) {
 function generateTeams(count, customNames = []) {
   teams = [];
   const usedColors = new Set();
+  const usedLeaguePlayerNames = new Set();
   
   function getColor() {
     let color;
@@ -76,7 +79,7 @@ function generateTeams(count, customNames = []) {
     let teamPlayers = [];
     const teamPlayerNames = new Set();
 
-    // Helper to add player
+    // Helper to add player (league-wide unique names)
     const addPlayer = (pos) => {
         let pData = null;
         let useUnique = false;
@@ -104,25 +107,39 @@ function generateTeams(count, customNames = []) {
         }
 
         if (useUnique) {
-            pData = uPool.pop(); // Remove from pool (Unique)
+            // pick unique player not yet used league-wide
+            while (uPool.length > 0 && !pData) {
+              const candidate = uPool.pop();
+              if (!usedLeaguePlayerNames.has(candidate.name) && !teamPlayerNames.has(candidate.name)) {
+                pData = candidate;
+              }
+            }
         } else {
-            // Use common pool (Stackable - don't remove)
+            // Use common pool but still avoid duplicates across the league
             const cPool = commonPool[pos];
             if (cPool.length > 0) {
                 let attempts = 0;
                 do {
                     pData = cPool[Math.floor(Math.random() * cPool.length)];
                     attempts++;
-                } while (teamPlayerNames.has(pData.name) && attempts < 15);
+                } while ((teamPlayerNames.has(pData.name) || usedLeaguePlayerNames.has(pData.name)) && attempts < 40);
+                if (pData && (teamPlayerNames.has(pData.name) || usedLeaguePlayerNames.has(pData.name))) {
+                  pData = null;
+                }
             }
         }
 
         // Fallback if no player found
         if (!pData) {
-            pData = { name: `${pos} ${randomInt(1,1000)}`, rating: randomInt(60,85), position: pos };
+            let synthetic;
+            do {
+              synthetic = `${pos} Youth ${randomInt(1000,9999)}`;
+            } while (teamPlayerNames.has(synthetic) || usedLeaguePlayerNames.has(synthetic));
+            pData = { name: synthetic, rating: randomInt(60,85), position: pos };
         }
 
         teamPlayerNames.add(pData.name);
+        usedLeaguePlayerNames.add(pData.name);
         teamPlayers.push(createPlayerObject(pData.name, pData.rating, pData.position));
     };
     
@@ -148,6 +165,8 @@ function generateTeams(count, customNames = []) {
       id: i,
       name: customNames[i] || `Team ${i + 1}`,
       color: getColor(),
+      manager: null,
+      morale: randomInt(50, 65),
       players: teamPlayers,
       stats: {
         played: 0,
@@ -160,11 +179,21 @@ function generateTeams(count, customNames = []) {
       },
     });
   }
+
+  if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams(teams);
+  if (typeof initializeTransferSystem === 'function') initializeTransferSystem(teams);
+  if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+  if (typeof rebuildFreeAgentPoolFromLeague === 'function') rebuildFreeAgentPoolFromLeague();
 }
 
 function generateRandomPlayersForTeam(index) {
   if (!teams[index]) return;
   teams[index].players = [];
+  const usedAcrossLeague = new Set();
+  teams.forEach((t, idx) => {
+    if (idx === index) return;
+    t.players.forEach(p => usedAcrossLeague.add(p.name));
+  });
   
   let gkPlayers = playerDatabase.filter(p => p.position === "GK");
   let defPlayers = playerDatabase.filter(p => p.position === "DEF");
@@ -179,32 +208,52 @@ function generateRandomPlayersForTeam(index) {
   // Add 2 GK
   for(let j=0; j<2; j++) {
       if(gkPlayers.length > 0) {
-          const pData = gkPlayers.pop();
+          let pData = gkPlayers.pop();
+          while (pData && usedAcrossLeague.has(pData.name) && gkPlayers.length > 0) pData = gkPlayers.pop();
+          if (!pData || usedAcrossLeague.has(pData.name)) {
+            pData = { name: `GK Youth ${randomInt(1000,9999)}`, rating: randomInt(60,84), position: 'GK' };
+          }
           teams[index].players.push(createPlayerObject(pData.name, pData.rating, pData.position));
+          usedAcrossLeague.add(pData.name);
       }
   }
   
   // Add 4 DEF
   for(let j=0; j<4; j++) {
       if(defPlayers.length > 0) {
-          const pData = defPlayers.pop();
+          let pData = defPlayers.pop();
+          while (pData && usedAcrossLeague.has(pData.name) && defPlayers.length > 0) pData = defPlayers.pop();
+          if (!pData || usedAcrossLeague.has(pData.name)) {
+            pData = { name: `DEF Youth ${randomInt(1000,9999)}`, rating: randomInt(60,84), position: 'DEF' };
+          }
           teams[index].players.push(createPlayerObject(pData.name, pData.rating, pData.position));
+          usedAcrossLeague.add(pData.name);
       }
   }
   
   // Add 3 MID
   for(let j=0; j<3; j++) {
       if(midPlayers.length > 0) {
-          const pData = midPlayers.pop();
+          let pData = midPlayers.pop();
+          while (pData && usedAcrossLeague.has(pData.name) && midPlayers.length > 0) pData = midPlayers.pop();
+          if (!pData || usedAcrossLeague.has(pData.name)) {
+            pData = { name: `MID Youth ${randomInt(1000,9999)}`, rating: randomInt(60,84), position: 'MID' };
+          }
           teams[index].players.push(createPlayerObject(pData.name, pData.rating, pData.position));
+          usedAcrossLeague.add(pData.name);
       }
   }
   
   // Add 3 FWD
   for(let j=0; j<3; j++) {
       if(fwdPlayers.length > 0) {
-          const pData = fwdPlayers.pop();
+          let pData = fwdPlayers.pop();
+          while (pData && usedAcrossLeague.has(pData.name) && fwdPlayers.length > 0) pData = fwdPlayers.pop();
+          if (!pData || usedAcrossLeague.has(pData.name)) {
+            pData = { name: `FWD Youth ${randomInt(1000,9999)}`, rating: randomInt(60,84), position: 'FWD' };
+          }
           teams[index].players.push(createPlayerObject(pData.name, pData.rating, pData.position));
+          usedAcrossLeague.add(pData.name);
       }
   }
   
@@ -213,14 +262,27 @@ function generateRandomPlayersForTeam(index) {
       const allRemaining = [...defPlayers, ...midPlayers, ...fwdPlayers];
       if(allRemaining.length > 0) {
           shuffleArray(allRemaining);
-          const pData = allRemaining[0];
+          let pData = allRemaining[0];
+          if (usedAcrossLeague.has(pData.name)) {
+            pData = allRemaining.find(x => !usedAcrossLeague.has(x.name)) || null;
+          }
+          if (!pData) {
+            const randomPos = ["DEF", "MID", "FWD"][randomInt(0, 2)];
+            pData = { name: `${randomPos} Youth ${randomInt(1000,9999)}`, rating: randomInt(60,84), position: randomPos };
+          }
           teams[index].players.push(createPlayerObject(pData.name, pData.rating, pData.position));
+          usedAcrossLeague.add(pData.name);
           
           if(pData.position === "DEF") defPlayers = defPlayers.filter(p => p.name !== pData.name);
           else if(pData.position === "MID") midPlayers = midPlayers.filter(p => p.name !== pData.name);
           else fwdPlayers = fwdPlayers.filter(p => p.name !== pData.name);
       }
   }
+
+  if (typeof ensureTeamFinanceProfile === 'function') ensureTeamFinanceProfile(teams[index]);
+  if (typeof initializeMoneySystemForTeams === 'function') initializeMoneySystemForTeams([teams[index]]);
+  if (typeof enforceLeagueWideUniquePlayers === 'function') enforceLeagueWideUniquePlayers();
+  if (typeof rebuildFreeAgentPoolFromLeague === 'function') rebuildFreeAgentPoolFromLeague();
 }
 
 // --- FIXTURES ---
@@ -386,6 +448,10 @@ function updateTeamStats(m) {
     a.stats.draws++;
     h.stats.points += 1;
     a.stats.points += 1;
+  }
+
+  if (typeof updateTeamEconomyAfterMatch === 'function') {
+    updateTeamEconomyAfterMatch(m);
   }
 }
 
